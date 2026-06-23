@@ -1,0 +1,69 @@
+# Build outputs
+build/
+**/build/
+**/build-*/
+**/cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+Makefile
+install/
+out/
+dist/
+
+# Keep Docker build recipes, but ignore downloaded archives inside them.
+!docker/build/
+!docker/build/**
+
+# Runtime state, crash dumps, logs and generated media
+/core
+/core.*
+runtime/
+*.log
+*.pid
+*.wav
+*.pcm
+*.mp3
+*.tmp
+out.wav
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Frontend dependencies and generated bundles
+node_modules/
+web-vue/node_modules/
+web-vue/dist/
+
+# Downloaded SDKs, model weights and third-party binary dependencies
+*.tar
+*.tar.gz
+*.tgz
+*.zip
+*.7z
+*.onnx
+*.rknn
+*.rkllm
+*.bin
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+
+node/llm/model/
+node/llm/rknn-llm/
+node/asr/models/
+node/asr/third_party/
+node/tts/models/
+node/tts/third_party/
+node/tts/summer_tts/
+single_node_demo/voice/
+single_node_demo/tts/

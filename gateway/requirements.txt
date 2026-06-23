@@ -1,0 +1,4 @@
+fastapi==0.110.3
+fastapi-cli==0.0.4
+python-multipart==0.0.9
+uvicorn[standard]==0.29.0

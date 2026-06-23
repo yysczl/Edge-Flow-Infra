@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Edge AI Gateway Console</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">OpenAI-compatible edge inference</p>
+          <h1>Edge AI Gateway Console</h1>
+        </div>
+        <div class="health-strip" aria-live="polite">
+          <span id="healthDot" class="status-dot unknown"></span>
+          <span id="healthText">Not checked</span>
+          <span id="latencyText">Latency: --</span>
+        </div>
+      </header>
+
+      <section class="connection-bar" aria-label="Connection">
+        <label class="field wide-field">
+          <span>Base URL</span>
+          <input id="baseUrlInput" type="url" value="http://127.0.0.1:8000" spellcheck="false">
+        </label>
+        <button id="saveBaseUrlBtn" class="primary-action" type="button">Save</button>
+        <button id="refreshStatusBtn" type="button">Refresh</button>
+      </section>
+
+      <section class="model-row" aria-label="Models">
+        <div class="model-tile">
+          <span>LLM</span>
+          <strong id="llmModel">rkllm-local</strong>
+          <small id="llmBusy">Idle</small>
+        </div>
+        <div class="model-tile">
+          <span>ASR</span>
+          <strong id="asrModel">asr-local</strong>
+          <small id="asrBusy">Idle</small>
+        </div>
+        <div class="model-tile">
+          <span>TTS</span>
+          <strong id="ttsModel">tts-local</strong>
+          <small id="ttsBusy">Idle</small>
+        </div>
+      </section>
+
+      <nav class="tabs" aria-label="Console sections">
+        <button class="tab active" type="button" data-tab="chat">Text</button>
+        <button class="tab" type="button" data-tab="asr">Speech to Text</button>
+        <button class="tab" type="button" data-tab="tts">Text to Speech</button>
+        <button class="tab" type="button" data-tab="voice">Voice Chat</button>
+        <button class="tab" type="button" data-tab="status">Status</button>
+        <button class="tab" type="button" data-tab="docs">API Docs</button>
+      </nav>
+
+      <main>
+        <section id="chat" class="panel active" aria-labelledby="chatTitle">
+          <div class="panel-header">
+            <h2 id="chatTitle">Text Generation</h2>
+            <label class="toggle">
+              <input id="streamToggle" type="checkbox" checked>
+              <span>Stream</span>
+            </label>
+          </div>
+          <div id="chatLog" class="chat-log" aria-live="polite"></div>
+          <form id="chatForm" class="composer">
+            <textarea id="chatInput" rows="3" placeholder="Send a message to the local model"></textarea>
+            <button id="sendChatBtn" class="primary-action" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section id="asr" class="panel" aria-labelledby="asrTitle">
+          <div class="panel-header">
+            <h2 id="asrTitle">Speech Recognition</h2>
+            <span class="format-pill">WAV</span>
+          </div>
+          <form id="asrForm" class="stack-form">
+            <label class="file-drop">
+              <span>WAV file</span>
+              <input id="asrFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+            </label>
+            <div class="action-row">
+              <button id="transcribeBtn" class="primary-action" type="submit">Transcribe</button>
+              <button id="recordAsrBtn" type="button">Record</button>
+            </div>
+          </form>
+          <div class="output-block">
+            <label for="asrOutput">Transcript</label>
+            <textarea id="asrOutput" rows="8" readonly></textarea>
+          </div>
+        </section>
+
+        <section id="tts" class="panel" aria-labelledby="ttsTitle">
+          <div class="panel-header">
+            <h2 id="ttsTitle">Speech Synthesis</h2>
+            <span class="format-pill">WAV</span>
+          </div>
+          <form id="ttsForm" class="stack-form">
+            <label class="field">
+              <span>Input</span>
+              <textarea id="ttsInput" rows="6" placeholder="Text to synthesize"></textarea>
+            </label>
+            <div class="control-grid">
+              <label class="field">
+                <span>Voice</span>
+                <input id="ttsVoice" type="number" min="0" step="1" value="0">
+              </label>
+              <label class="field">
+                <span>Speed</span>
+                <input id="ttsSpeed" type="number" min="0.1" step="0.1" value="1.0">
+              </label>
+            </div>
+            <button id="synthesizeBtn" class="primary-action" type="submit">Synthesize</button>
+          </form>
+          <div class="audio-result">
+            <audio id="ttsAudio" controls></audio>
+            <a id="ttsDownload" class="download-link disabled" href="#" download="speech.wav">Download WAV</a>
+          </div>
+        </section>
+
+        <section id="voice" class="panel" aria-labelledby="voiceTitle">
+          <div class="panel-header">
+            <h2 id="voiceTitle">Voice Conversation</h2>
+            <span class="format-pill">ASR -> LLM -> TTS</span>
+          </div>
+          <form id="voiceForm" class="stack-form">
+            <label class="file-drop">
+              <span>WAV file</span>
+              <input id="voiceFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+            </label>
+            <label class="field">
+              <span>System Prompt</span>
+              <textarea id="voiceSystemPrompt" rows="3">You are a local AI assistant running on an edge device. Keep answers concise.</textarea>
+            </label>
+            <div class="control-grid">
+              <label class="field">
+                <span>Voice</span>
+                <input id="voiceSpeaker" type="number" min="0" step="1" value="0">
+              </label>
+              <label class="field">
+                <span>Speed</span>
+                <input id="voiceSpeed" type="number" min="0.1" step="0.1" value="1.0">
+              </label>
+            </div>
+            <div class="action-row">
+              <button id="voiceSubmitBtn" class="primary-action" type="submit">Run Conversation</button>
+              <button id="recordVoiceBtn" type="button">Record</button>
+            </div>
+          </form>
+          <div class="voice-result">
+            <div>
+              <label for="voiceTranscript">Transcript</label>
+              <textarea id="voiceTranscript" rows="4" readonly></textarea>
+            </div>
+            <div>
+              <label for="voiceReply">Reply</label>
+              <textarea id="voiceReply" rows="4" readonly></textarea>
+            </div>
+            <audio id="voiceAudio" controls></audio>
+          </div>
+        </section>
+
+        <section id="status" class="panel" aria-labelledby="statusTitle">
+          <div class="panel-header">
+            <h2 id="statusTitle">Runtime Status</h2>
+            <button id="statusRefreshBtn" type="button">Refresh</button>
+          </div>
+          <div class="status-grid">
+            <div>
+              <span>Health</span>
+              <strong id="statusHealth">Unknown</strong>
+            </div>
+            <div>
+              <span>Latency</span>
+              <strong id="statusLatency">--</strong>
+            </div>
+            <div>
+              <span>Unit Manager</span>
+              <strong id="unitManagerAddr">--</strong>
+            </div>
+          </div>
+          <pre id="healthJson" class="json-view">{}</pre>
+        </section>
+
+        <section id="docs" class="panel" aria-labelledby="docsTitle">
+          <div class="panel-header">
+            <h2 id="docsTitle">API Docs</h2>
+            <button id="copyModelsCurl" type="button">Copy models curl</button>
+          </div>
+          <div class="docs-grid">
+            <div class="endpoint-list">
+              <h3>Endpoints</h3>
+              <ul>
+                <li><code>GET /health</code></li>
+                <li><code>GET /v1/models</code></li>
+                <li><code>POST /v1/chat/completions</code></li>
+                <li><code>POST /v1/audio/speech</code></li>
+                <li><code>POST /v1/audio/transcriptions</code></li>
+                <li><code>POST /v1/audio/conversations</code></li>
+              </ul>
+            </div>
+            <div class="snippet-list">
+              <h3>OpenAI-compatible Examples</h3>
+              <pre id="curlHealth" class="code-view"></pre>
+              <pre id="curlModels" class="code-view"></pre>
+              <pre id="curlChat" class="code-view"></pre>
+              <pre id="curlSpeech" class="code-view"></pre>
+              <pre id="curlTranscribe" class="code-view"></pre>
+              <pre id="curlConversation" class="code-view"></pre>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
