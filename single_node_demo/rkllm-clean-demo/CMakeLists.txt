@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(RKLLM_ROOT
-    "/home/pi/Edge-LLM-Infra/node/llm/rknn-llm/rkllm-runtime/Linux/librkllm_api"
+    "/home/pi/Edge-Flow-Infra/node/llm/rknn-llm/rkllm-runtime/Linux/librkllm_api"
 )
 
 add_executable(rkllm_clean_demo

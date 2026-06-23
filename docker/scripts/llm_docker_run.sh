@@ -23,8 +23,8 @@ docker run -it -d \
 -e DOCKER_GRP="${group}" \
 -e DOCKER_GRP_ID="${gid}" \
 -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
--w /home/pi/Edge-LLM-Infra \
--v ${MONITOR_HOME_DIR}:/home/pi/Edge-LLM-Infra \
+-w /home/pi/Edge-Flow-Infra \
+-v ${MONITOR_HOME_DIR}:/home/pi/Edge-Flow-Infra \
 -v ${XDG_RUNTIME_DIR}:${XDG_RUNTIME_DIR} \
 --net host \
 llm:v1.0

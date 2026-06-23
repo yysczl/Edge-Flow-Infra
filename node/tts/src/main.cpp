@@ -1,5 +1,5 @@
 /*
-cd /home/pi/Edge-LLM-Infra/node/tts
+cd /home/pi/Edge-Flow-Infra/node/tts
 cmake -S . -B build
 cmake --build build -j12
 

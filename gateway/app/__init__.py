@@ -1,1 +1,1 @@
-"""OpenAI-compatible gateway for Edge-LLM-Infra."""
+"""OpenAI-compatible gateway for Edge-Flow-Infra."""

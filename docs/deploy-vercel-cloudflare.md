@@ -1,6 +1,6 @@
 # Edge LLM Infra 前后端公网部署教程
 
-本文档记录 `Edge-LLM-Infra` 项目从“只部署前端到 Vercel”，到“通过 Cloudflare 连接本地后端并统一入口访问”的完整流程。
+本文档记录 `Edge-Flow-Infra` 项目从“只部署前端到 Vercel”，到“通过 Cloudflare 连接本地后端并统一入口访问”的完整流程。
 
 文档基于当前项目结构和已经使用过的真实配置编写。敏感凭据，例如 Cloudflare Tunnel token、API key、GitHub OAuth secret，不应写入仓库；如果这些内容曾出现在截图或终端里，建议立即轮换。
 
@@ -66,7 +66,7 @@ web-vue/package.json
 后端启动方式：
 
 ```bash
-cd /home/pi/Edge-LLM-Infra
+cd /home/pi/Edge-Flow-Infra
 ./scripts/start_runtime.sh
 ```
 
@@ -87,7 +87,7 @@ python3 -m uvicorn gateway.app.main:app
 先在本地确认前端可以构建：
 
 ```bash
-cd /home/pi/Edge-LLM-Infra/web-vue
+cd /home/pi/Edge-Flow-Infra/web-vue
 npm install
 npm run build
 ```
@@ -95,7 +95,7 @@ npm run build
 构建产物目录：
 
 ```text
-/home/pi/Edge-LLM-Infra/web-vue/dist
+/home/pi/Edge-Flow-Infra/web-vue/dist
 ```
 
 作用：确认前端代码没有构建错误。Vercel 部署时本质上也是执行 `npm run build`，然后发布 `dist/`。
@@ -456,7 +456,7 @@ bash docker/scripts/llm_docker_run.sh
 bash docker/scripts/llm_docker_into.sh
 
 # 编译
-cd /home/pi/Edge-LLM-Infra
+cd /home/pi/Edge-Flow-Infra
 
 # infra-controller  -> 生成 install/lib/libstackflow.a
 cmake -S infra-controller -B infra-controller/build
@@ -483,7 +483,7 @@ cmake --build node/tts/build -j$(nproc)
 gateway 在边缘设备或服务器上：
 
 ```bash
-cd /home/pi/Edge-LLM-Infra
+cd /home/pi/Edge-Flow-Infra
 ./scripts/start_runtime.sh
 ```
 
@@ -872,7 +872,7 @@ curl -i http://127.0.0.1:8000/health
 如果不通，先启动：
 
 ```bash
-cd /home/pi/Edge-LLM-Infra
+cd /home/pi/Edge-Flow-Infra
 ./scripts/start_runtime.sh
 ```
 
@@ -972,7 +972,7 @@ Zero Trust -> Networks -> Connectors -> edge-infra-api -> Live logs
 ### 13.3 本地 gateway 日志
 
 ```bash
-cd /home/pi/Edge-LLM-Infra
+cd /home/pi/Edge-Flow-Infra
 tail -f runtime/logs/gateway.log
 ```
 
