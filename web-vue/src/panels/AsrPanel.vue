@@ -60,21 +60,29 @@ async function toggleRecording() {
     </div>
 
     <form class="stack-form" @submit.prevent="submitAsr">
-      <label class="file-drop">
-        <span>WAV file</span>
-        <input
-          ref="fileInput"
-          type="file"
-          accept=".wav,audio/wav,audio/x-wav"
-          @change="handleFileChange"
+      <div class="record-file-row">
+        <button
+          class="record-action"
+          type="button"
+          :class="{ recording: isRecordingThis }"
+          :disabled="isRecordingOther"
+          @click="toggleRecording"
         >
-      </label>
+          {{ isRecordingThis ? "Stop" : "Record" }}
+        </button>
+        <label class="file-drop">
+          <span>WAV file</span>
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".wav,audio/wav,audio/x-wav"
+            @change="handleFileChange"
+          >
+        </label>
+      </div>
       <div class="action-row">
         <button class="primary-action" type="submit" :disabled="isSubmitting">
           {{ isSubmitting ? "Transcribing" : "Transcribe" }}
-        </button>
-        <button type="button" :disabled="isRecordingOther" @click="toggleRecording">
-          {{ isRecordingThis ? "Stop" : "Record" }}
         </button>
       </div>
     </form>

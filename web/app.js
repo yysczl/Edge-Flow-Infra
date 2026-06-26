@@ -492,6 +492,8 @@ async function stopRecording(recording) {
 function updateRecordButtons(activeTarget) {
   els.recordAsrBtn.textContent = activeTarget === "asr" ? "Stop" : "Record";
   els.recordVoiceBtn.textContent = activeTarget === "voice" ? "Stop" : "Record";
+  els.recordAsrBtn.classList.toggle("recording", activeTarget === "asr");
+  els.recordVoiceBtn.classList.toggle("recording", activeTarget === "voice");
   els.recordAsrBtn.disabled = Boolean(activeTarget && activeTarget !== "asr");
   els.recordVoiceBtn.disabled = Boolean(activeTarget && activeTarget !== "voice");
 }

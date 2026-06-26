@@ -78,13 +78,15 @@
             <span class="format-pill">WAV</span>
           </div>
           <form id="asrForm" class="stack-form">
-            <label class="file-drop">
-              <span>WAV file</span>
-              <input id="asrFile" type="file" accept=".wav,audio/wav,audio/x-wav">
-            </label>
+            <div class="record-file-row">
+              <button id="recordAsrBtn" class="record-action" type="button">Record</button>
+              <label class="file-drop">
+                <span>WAV file</span>
+                <input id="asrFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+              </label>
+            </div>
             <div class="action-row">
               <button id="transcribeBtn" class="primary-action" type="submit">Transcribe</button>
-              <button id="recordAsrBtn" type="button">Record</button>
             </div>
           </form>
           <div class="output-block">
@@ -127,10 +129,13 @@
             <span class="format-pill">ASR -> LLM -> TTS</span>
           </div>
           <form id="voiceForm" class="stack-form">
-            <label class="file-drop">
-              <span>WAV file</span>
-              <input id="voiceFile" type="file" accept=".wav,audio/wav,audio/x-wav">
-            </label>
+            <div class="record-file-row">
+              <button id="recordVoiceBtn" class="record-action" type="button">Record</button>
+              <label class="file-drop">
+                <span>WAV file</span>
+                <input id="voiceFile" type="file" accept=".wav,audio/wav,audio/x-wav">
+              </label>
+            </div>
             <label class="field">
               <span>System Prompt</span>
               <textarea id="voiceSystemPrompt" rows="3">You are a local AI assistant running on an edge device. Keep answers concise.</textarea>
@@ -147,7 +152,6 @@
             </div>
             <div class="action-row">
               <button id="voiceSubmitBtn" class="primary-action" type="submit">Run Conversation</button>
-              <button id="recordVoiceBtn" type="button">Record</button>
             </div>
           </form>
           <div class="voice-result">
