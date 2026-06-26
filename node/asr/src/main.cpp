@@ -117,7 +117,8 @@ public:
         if (channel->subscriber_work_id(
                 "",
                 std::bind(
-                    &AsrNode::on_inference,
+                    // 每次客户端发送一块 PCM 数据，on_inference 就被触发
+                    &AsrNode::on_inference, // 每收到数据就触发一次
                     this,
                     std::weak_ptr<AsrTask>(task),
                     std::weak_ptr<llm_channel_obj>(channel),

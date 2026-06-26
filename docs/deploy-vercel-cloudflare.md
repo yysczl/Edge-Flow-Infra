@@ -1,4 +1,4 @@
-# Edge LLM Infra 前后端公网部署教程
+# Edge Flow Infra 前后端公网部署教程
 
 本文档记录 `Edge-Flow-Infra` 项目从“只部署前端到 Vercel”，到“通过 Cloudflare 连接本地后端并统一入口访问”的完整流程。
 
@@ -157,23 +157,6 @@ VITE_GATEWAY_BASE_URL
 
 ![alt text](image-2.png)
 
-### 3.5 前端域名
-
-当前已经使用过的前端相关域名：
-
-```text
-https://edge-infra.ianyys.com
-https://edge-flow-ai.vercel.app
-```
-
-在最终同源方案里：
-
-```text
-用户入口: https://edge-infra.ianyys.com
-Vercel 源站: https://edge-flow-ai.vercel.app
-```
-
-重要：Cloudflare Worker 的 `FRONTEND_ORIGIN` 不能写 `https://edge-infra.ianyys.com`，否则 Worker 会把请求转发回自己，产生循环。
 
 ## 4. 域名 DNS：登录阿里云域名控制台，从阿里云切到 Cloudflare
 
@@ -276,12 +259,12 @@ Cloudflare Dashboard -> Domains -> ianyys.com -> DNS -> Records
 edge-infra.ianyys.com
 ```
 
-如果这个域名原先直接用于 Vercel，可以保留 Vercel CNAME：
+添加或确认这条记录：
 
 ```text
 Type: CNAME，表示这个子域名指向另一个域名。
 Name: edge-infra，最终完整域名就是：edge-infra.ianyys.com
-Target: cname.vercel-dns.com 或 Vercel 提供的目标，让 edge-infra.ianyys.com 原本指向 Vercel
+Target: edge-flow-ai.vercel.app，让 edge-infra.ianyys.com 指向 Vercel
 Proxy status: Proxied，橙色云，流量会先进入 Cloudflare，这样 Worker 才能拦截请求
 ```
 
@@ -399,7 +382,7 @@ cloudflare/edge-infra-worker.js
 推荐内容：
 
 ```js
-const FRONTEND_ORIGIN = "https://edge-infra.console.ianyys.com";
+const FRONTEND_ORIGIN = "https://edge-flow-infra.vercel.app";
 const API_ORIGIN = "https://edge-infra-api-origin.ianyys.com";
 
 const API_PATHS = ["/health", "/v1/"];
@@ -571,7 +554,7 @@ cloudflared
 名称：
 
 ```text
-edge-infra-api
+edge-infra-api-origin
 ```
 
 Cloudflare 会给出运行命令，例如：
@@ -691,7 +674,7 @@ Hostname routes: WARP/Cloudflare One Client 私有网络访问
 路径：
 
 ```text
-Cloudflare Dashboard -> Workers & Pages -> Create application -> Create Worker
+Cloudflare Dashboard -> Compute -> Workers & Pages -> Create application -> Create Worker
 ```
 
 Worker 名称：

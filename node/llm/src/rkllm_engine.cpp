@@ -19,6 +19,7 @@ struct RunStreamContext
 };
 
 // callback 中将result放入userdata指向的RunContext中，供run函数使用
+// 这个userdata其实就是rkllm_run(handle_, &input, &infer_param, &context)里的context
 int rkllm_callback(RKLLMResult *result, void *userdata, LLMCallState state)
 {
     auto *context = static_cast<RunStreamContext *>(userdata);
@@ -28,6 +29,7 @@ int rkllm_callback(RKLLMResult *result, void *userdata, LLMCallState state)
 
     if (state == RKLLM_RUN_NORMAL) {
         if (result != nullptr && result->text != nullptr && context->callback) {
+            // 非流式 *context->output += result->text;
             context->callback(result->text, false);
         }
     } else if (state == RKLLM_RUN_FINISH) {

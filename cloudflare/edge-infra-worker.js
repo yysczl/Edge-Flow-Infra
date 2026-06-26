@@ -1,4 +1,4 @@
-const FRONTEND_ORIGIN = "https://edge-flow-ai.vercel.app";
+const FRONTEND_ORIGIN = "https://edge-flow-infra.vercel.app";
 const API_ORIGIN = "https://edge-infra-api-origin.ianyys.com";
 
 const API_PATHS = ["/health", "/v1/"];
