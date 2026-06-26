@@ -622,6 +622,7 @@ http://127.0.0.1:8000
 
 ```bash
 docker run --rm --network host cloudflare/cloudflared:latest tunnel --no-autoupdate run --token <CLOUDFLARE_TUNNEL_TOKEN>
+docker run --rm --network host  cloudflare/cloudflared:latest tunnel --no-autoupdate run --token eyJhIjoiNTg1OTZiYzI5YjYwYjYyOWQ2NmRiMGJjNGE4ZThiYzIiLCJ0IjoiMzA4OTM3ODUtZTQ0YS00YzAyLTliMDAtZGMxMDA1ZjM4YTViIiwicyI6IllqTmtPVGd4T1dFdE56VmlNQzAwWlRWaUxUbGxPR0V0WWpObU1USTVNR1F5WTJJNSJ9
 ```
 
 这样 cloudflared 容器里的 `127.0.0.1:8000` 就是宿主机的 `127.0.0.1:8000`。

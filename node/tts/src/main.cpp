@@ -8,13 +8,17 @@ cmake --build build -j12
 
 #include "StackFlow.h"
 #include "channel.h"
+#include "NodeJobQueue.h"
+#include "NodeRuntimeUtil.h"
 #include "tts_engine.h"
 
 #include <atomic>
 #include <csignal>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 #include <unistd.h>
@@ -153,19 +157,28 @@ private:
 class TtsNode : public StackFlow
 {
 public:
-    explicit TtsNode(TtsEngine &engine) : StackFlow("tts"), engine_(engine)
+    explicit TtsNode(TtsEngine &engine)
+        : StackFlow("tts"),
+          engine_(engine),
+          max_sessions_(read_size_env("TTS_MAX_SESSIONS", 8)),
+          max_queue_size_(read_size_env("TTS_MAX_QUEUE_SIZE", 64)),
+          jobs_(max_queue_size_)
     {
+        worker_ = std::thread(&TtsNode::worker_loop, this);
     }
 
     int setup(const std::string &work_id, const std::string &, const std::string &) override
     {
-        if (!tasks_.empty()) {
-            send(
-                "None",
-                "None",
-                R"({"code":-21,"message":"task full"})",
-                work_id);
-            return -1;
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            if (tasks_.size() >= max_sessions_) {
+                send(
+                    "None",
+                    "None",
+                    R"({"code":-21,"message":"session full"})",
+                    work_id);
+                return -1;
+            }
         }
 
         const int work_id_num = sample_get_work_id_num(work_id);
@@ -192,7 +205,19 @@ public:
             return -1;
         }
 
-        tasks_[work_id_num] = task;
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            if (tasks_.size() >= max_sessions_) {
+                channel->stop_subscriber("");
+                send(
+                    "None",
+                    "None",
+                    R"({"code":-21,"message":"session full"})",
+                    work_id);
+                return -1;
+            }
+            tasks_[work_id_num] = task;
+        }
         send("None", "None", LLM_NO_ERROR, work_id);
         return 0;
     }
@@ -200,18 +225,21 @@ public:
     int exit(const std::string &work_id, const std::string &, const std::string &) override
     {
         const int work_id_num = sample_get_work_id_num(work_id);
-        const auto it = tasks_.find(work_id_num);
-        if (it == tasks_.end()) {
-            send(
-                "None",
-                "None",
-                R"({"code":-6,"message":"Unit Does Not Exist"})",
-                work_id);
-            return -1;
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            const auto it = tasks_.find(work_id_num);
+            if (it == tasks_.end()) {
+                send(
+                    "None",
+                    "None",
+                    R"({"code":-6,"message":"Unit Does Not Exist"})",
+                    work_id);
+                return -1;
+            }
+            tasks_.erase(it);
         }
 
         get_channel(work_id_num)->stop_subscriber("");
-        tasks_.erase(it);
         send("None", "None", LLM_NO_ERROR, work_id);
         return 0;
     }
@@ -220,8 +248,11 @@ public:
     {
         nlohmann::json body;
         body["tasks"] = nlohmann::json::array();
-        for (const auto &task : tasks_) {
-            body["tasks"].push_back(sample_get_work_id(task.first, unit_name_));
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            for (const auto &task : tasks_) {
+                body["tasks"].push_back(sample_get_work_id(task.first, unit_name_));
+            }
         }
         body["sample_rate"] = 16000;
         body["speaker_count"] = engine_.speaker_count();
@@ -230,13 +261,25 @@ public:
 
     ~TtsNode()
     {
-        for (const auto &task : tasks_) {
-            get_channel(task.first)->stop_subscriber("");
+        stop_worker();
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            for (const auto &task : tasks_) {
+                get_channel(task.first)->stop_subscriber("");
+            }
+            tasks_.clear();
         }
-        tasks_.clear();
     }
 
 private:
+    struct Job {
+        std::weak_ptr<TtsTask> task;
+        std::weak_ptr<llm_channel_obj> channel;
+        std::string work_id;
+        std::string request_id;
+        std::string input;
+    };
+
     void on_inference(
         std::weak_ptr<TtsTask> task_weak,
         std::weak_ptr<llm_channel_obj> channel_weak,
@@ -250,20 +293,61 @@ private:
             return;
         }
 
-        nlohmann::json result;
-        std::string error;
-        if (!task->inference(data, result, error)) {
-            channel->send("None", "None", error, work_id);
-            return;
-        }
+        enqueue_job({task_weak, channel_weak, work_id, channel->request_id_, data}, channel);
+    }
 
-        const std::string object_name =
-            result.value("played", true) ? "tts.play.done" : "tts.audio";
-        channel->send(object_name, result, LLM_NO_ERROR, work_id);
+    void enqueue_job(Job job, const std::shared_ptr<llm_channel_obj> &channel)
+    {
+        const std::string work_id = job.work_id;
+        if (!jobs_.push(std::move(job))) {
+            channel->send(
+                "None",
+                "None",
+                R"({"code":-22,"message":"queue full"})",
+                work_id);
+        }
+    }
+
+    void worker_loop()
+    {
+        Job job;
+        while (jobs_.wait_pop(job)) {
+            auto task = job.task.lock();
+            auto channel = job.channel.lock();
+            if (!task || !channel) {
+                continue;
+            }
+
+            channel->request_id_ = job.request_id;
+
+            nlohmann::json result;
+            std::string error;
+            if (!task->inference(job.input, result, error)) {
+                channel->send("None", "None", error, job.work_id);
+                continue;
+            }
+
+            const std::string object_name =
+                result.value("played", true) ? "tts.play.done" : "tts.audio";
+            channel->send(object_name, result, LLM_NO_ERROR, job.work_id);
+        }
+    }
+
+    void stop_worker()
+    {
+        jobs_.stop();
+        if (worker_.joinable()) {
+            worker_.join();
+        }
     }
 
     TtsEngine &engine_;
     std::unordered_map<int, std::shared_ptr<TtsTask>> tasks_;
+    std::size_t max_sessions_;
+    std::size_t max_queue_size_;
+    std::mutex tasks_mutex_;
+    NodeJobQueue<Job> jobs_;
+    std::thread worker_;
 };
 
 int main(int argc, char *argv[])

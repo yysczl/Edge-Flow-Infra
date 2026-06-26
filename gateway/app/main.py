@@ -2,10 +2,9 @@ import base64
 import binascii
 import json
 import os
-import threading
 import time
 import uuid
-from typing import Any, Dict, Iterator
+from typing import Any, Dict, Iterator, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,11 +43,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-rkllm_lock = threading.Lock()
-tts_lock = threading.Lock()
-asr_lock = threading.Lock()
-
-
 @app.get("/health")
 def health() -> Dict[str, Any]:
     return {
@@ -59,15 +53,12 @@ def health() -> Dict[str, Any]:
         },
         "rkllm": {
             "model": RKLLM_MODEL_ID,
-            "busy": rkllm_lock.locked(),
         },
         "tts": {
             "model": TTS_MODEL_ID,
-            "busy": tts_lock.locked(),
         },
         "asr": {
             "model": ASR_MODEL_ID,
-            "busy": asr_lock.locked(),
         },
     }
 
@@ -259,10 +250,6 @@ def run_chat_completion(prompt: str) -> str:
 
 
 def run_tts_speech(text: str, speaker_id: int, length_scale: float) -> bytes:
-    acquired = tts_lock.acquire(timeout=1)
-    if not acquired:
-        raise UnitManagerError("tts is busy; retry later", code=429)
-
     work_id = None
     try:
         with UnitManagerClient(
@@ -292,23 +279,10 @@ def run_tts_speech(text: str, speaker_id: int, length_scale: float) -> bytes:
             except (binascii.Error, ValueError) as exc:
                 raise UnitManagerError(f"tts returned invalid base64 audio: {exc}")
     finally:
-        try:
-            if work_id:
-                with UnitManagerClient(
-                    UNIT_MANAGER_HOST,
-                    UNIT_MANAGER_PORT,
-                    10,
-                ) as cleanup_client:
-                    cleanup_client.exit(work_id, "tts")
-        finally:
-            tts_lock.release()
+        cleanup_work_id(work_id, "tts")
 
 
 def run_asr_transcription(wav_bytes: bytes) -> str:
-    acquired = asr_lock.acquire(timeout=1)
-    if not acquired:
-        raise UnitManagerError("asr is busy; retry later", code=429)
-
     work_id = None
     try:
         chunks = list(wav_pcm16_chunks(wav_bytes))
@@ -323,16 +297,7 @@ def run_asr_transcription(wav_bytes: bytes) -> str:
             work_id = client.setup("asr")
             return client.asr_transcribe(work_id, chunks)
     finally:
-        try:
-            if work_id:
-                with UnitManagerClient(
-                    UNIT_MANAGER_HOST,
-                    UNIT_MANAGER_PORT,
-                    10,
-                ) as cleanup_client:
-                    cleanup_client.exit(work_id, "asr")
-        finally:
-            asr_lock.release()
+        cleanup_work_id(work_id, "asr")
 
 
 def stream_chat_completion(prompt: str) -> Iterator[str]:
@@ -369,10 +334,6 @@ def stream_chat_completion(prompt: str) -> Iterator[str]:
 
 
 def run_rkllm_stream(prompt: str) -> Iterator[Dict[str, Any]]:
-    acquired = rkllm_lock.acquire(timeout=1)
-    if not acquired:
-        raise UnitManagerError("rkllm is busy; retry later", code=429)
-
     work_id = None
     try:
         with UnitManagerClient(
@@ -384,16 +345,23 @@ def run_rkllm_stream(prompt: str) -> Iterator[Dict[str, Any]]:
             for data in client.rkllm_stream(work_id, prompt):
                 yield data
     finally:
-        try:
-            if work_id:
-                with UnitManagerClient(
-                    UNIT_MANAGER_HOST,
-                    UNIT_MANAGER_PORT,
-                    10,
-                ) as cleanup_client:
-                    cleanup_client.exit(work_id, "rkllm")
-        finally:
-            rkllm_lock.release()
+        cleanup_work_id(work_id, "rkllm")
+
+
+def cleanup_work_id(work_id: Optional[str], unit_name: str) -> None:
+    if not work_id:
+        return
+
+    try:
+        with UnitManagerClient(
+            UNIT_MANAGER_HOST,
+            UNIT_MANAGER_PORT,
+            10,
+        ) as cleanup_client:
+            cleanup_client.exit(work_id, unit_name)
+    except Exception:
+        # Cleanup is best-effort. Do not hide the real inference response/error.
+        return
 
 
 def sse(payload: Dict[str, Any]) -> str:

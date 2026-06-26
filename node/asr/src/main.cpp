@@ -2,12 +2,16 @@
 #include "StackFlow.h"
 #include "asr_engine.h"
 #include "channel.h"
+#include "NodeJobQueue.h"
+#include "NodeRuntimeUtil.h"
 
 #include <csignal>
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 #include <unistd.h>
@@ -27,8 +31,14 @@ void handle_signal(int)
 class AsrTask
 {
 public:
-    explicit AsrTask(AsrEngine &engine) : engine_(engine)
+    explicit AsrTask(AsrEngine &engine)
+        : engine_(engine), stream_(engine.create_stream())
     {
+    }
+
+    bool ready() const
+    {
+        return static_cast<bool>(stream_);
     }
 
     bool inference(
@@ -44,7 +54,7 @@ public:
             bool endpoint = false;
 
             if (finish) {
-                if (!engine_.finish(text)) {
+                if (!engine_.finish(stream_, text)) {
                     error =
                         R"({"code":-11,"message":"ASR finish failed"})";
                     return false;
@@ -55,6 +65,7 @@ public:
                     body.at("samples").get<std::vector<int16_t>>();
 
                 if (!engine_.feed(
+                        stream_,
                         samples.data(),
                         samples.size(),
                         text,
@@ -72,7 +83,7 @@ public:
             };
 
             if (finish || endpoint) {
-                engine_.reset();
+                engine_.reset(stream_);
             }
             return true;
         } catch (const std::exception &) {
@@ -84,14 +95,20 @@ public:
 
 private:
     AsrEngine &engine_;
+    AsrEngine::StreamPtr stream_;
 };
 
 class AsrNode : public StackFlow
 {
 public:
     explicit AsrNode(AsrEngine &engine)
-        : StackFlow("asr"), engine_(engine)
+        : StackFlow("asr"),
+          engine_(engine),
+          max_sessions_(read_size_env("ASR_MAX_SESSIONS", 8)),
+          max_queue_size_(read_size_env("ASR_MAX_QUEUE_SIZE", 256)),
+          jobs_(max_queue_size_)
     {
+        worker_ = std::thread(&AsrNode::worker_loop, this);
     }
 
     int setup(
@@ -99,18 +116,29 @@ public:
         const std::string &,
         const std::string &) override
     {
-        if (!tasks_.empty()) {
-            send(
-                "None",
-                "None",
-                R"({"code":-21,"message":"task full"})",
-                work_id);
-            return -1;
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            if (tasks_.size() >= max_sessions_) {
+                send(
+                    "None",
+                    "None",
+                    R"({"code":-21,"message":"session full"})",
+                    work_id);
+                return -1;
+            }
         }
 
         const int work_id_num = sample_get_work_id_num(work_id);
         auto channel = get_channel(work_id);
         auto task = std::make_shared<AsrTask>(engine_);
+        if (!task->ready()) {
+            send(
+                "None",
+                "None",
+                R"({"code":-11,"message":"create ASR stream failed"})",
+                work_id);
+            return -1;
+        }
 
         channel->set_output(true);
         channel->set_stream(true);
@@ -133,7 +161,19 @@ public:
             return -1;
         }
 
-        tasks_[work_id_num] = task;
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            if (tasks_.size() >= max_sessions_) {
+                channel->stop_subscriber("");
+                send(
+                    "None",
+                    "None",
+                    R"({"code":-21,"message":"session full"})",
+                    work_id);
+                return -1;
+            }
+            tasks_[work_id_num] = task;
+        }
         send("None", "None", LLM_NO_ERROR, work_id);
         return 0;
     }
@@ -144,19 +184,21 @@ public:
         const std::string &) override
     {
         const int work_id_num = sample_get_work_id_num(work_id);
-        const auto it = tasks_.find(work_id_num);
-        if (it == tasks_.end()) {
-            send(
-                "None",
-                "None",
-                R"({"code":-6,"message":"Unit Does Not Exist"})",
-                work_id);
-            return -1;
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            const auto it = tasks_.find(work_id_num);
+            if (it == tasks_.end()) {
+                send(
+                    "None",
+                    "None",
+                    R"({"code":-6,"message":"Unit Does Not Exist"})",
+                    work_id);
+                return -1;
+            }
+            tasks_.erase(it);
         }
 
         get_channel(work_id_num)->stop_subscriber("");
-        tasks_.erase(it);
-        engine_.reset();
         send("None", "None", LLM_NO_ERROR, work_id);
         return 0;
     }
@@ -167,21 +209,36 @@ public:
         const std::string &) override
     {
         nlohmann::json body = nlohmann::json::array();
-        for (const auto &task : tasks_) {
-            body.push_back(sample_get_work_id(task.first, unit_name_));
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            for (const auto &task : tasks_) {
+                body.push_back(sample_get_work_id(task.first, unit_name_));
+            }
         }
         send("asr.tasklist", body, LLM_NO_ERROR, work_id);
     }
 
     ~AsrNode()
     {
-        for (const auto &task : tasks_) {
-            get_channel(task.first)->stop_subscriber("");
+        stop_worker();
+        {
+            std::lock_guard<std::mutex> lock(tasks_mutex_);
+            for (const auto &task : tasks_) {
+                get_channel(task.first)->stop_subscriber("");
+            }
+            tasks_.clear();
         }
-        tasks_.clear();
     }
 
 private:
+    struct Job {
+        std::weak_ptr<AsrTask> task;
+        std::weak_ptr<llm_channel_obj> channel;
+        std::string work_id;
+        std::string request_id;
+        std::string input;
+    };
+
     void on_inference(
         std::weak_ptr<AsrTask> task_weak,
         std::weak_ptr<llm_channel_obj> channel_weak,
@@ -195,22 +252,63 @@ private:
             return;
         }
 
-        nlohmann::json result;
-        std::string error;
-        if (!task->inference(data, result, error)) {
-            channel->send("None", "None", error, work_id);
-            return;
-        }
+        enqueue_job({task_weak, channel_weak, work_id, channel->request_id_, data}, channel);
+    }
 
-        channel->send(
-            "asr.result.stream",
-            result,
-            LLM_NO_ERROR,
-            work_id);
+    void enqueue_job(Job job, const std::shared_ptr<llm_channel_obj> &channel)
+    {
+        const std::string work_id = job.work_id;
+        if (!jobs_.push(std::move(job))) {
+            channel->send(
+                "None",
+                "None",
+                R"({"code":-22,"message":"queue full"})",
+                work_id);
+        }
+    }
+
+    void worker_loop()
+    {
+        Job job;
+        while (jobs_.wait_pop(job)) {
+            auto task = job.task.lock();
+            auto channel = job.channel.lock();
+            if (!task || !channel) {
+                continue;
+            }
+
+            channel->request_id_ = job.request_id;
+
+            nlohmann::json result;
+            std::string error;
+            if (!task->inference(job.input, result, error)) {
+                channel->send("None", "None", error, job.work_id);
+                continue;
+            }
+
+            channel->send(
+                "asr.result.stream",
+                result,
+                LLM_NO_ERROR,
+                job.work_id);
+        }
+    }
+
+    void stop_worker()
+    {
+        jobs_.stop();
+        if (worker_.joinable()) {
+            worker_.join();
+        }
     }
 
     AsrEngine &engine_;
     std::unordered_map<int, std::shared_ptr<AsrTask>> tasks_;
+    std::size_t max_sessions_;
+    std::size_t max_queue_size_;
+    std::mutex tasks_mutex_;
+    NodeJobQueue<Job> jobs_;
+    std::thread worker_;
 };
 
 int main(int argc, char *argv[])

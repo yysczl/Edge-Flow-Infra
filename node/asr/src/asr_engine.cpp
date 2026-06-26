@@ -34,29 +34,38 @@ bool AsrEngine::init(const std::string &model_dir)
         return false;
     }
 
-    auto stream = recognizer.CreateStream();
-    if (!stream.Get()) {
-        std::cerr << "Failed to create ASR stream\n";
-        return false;
-    }
-
     shutdown();
     recognizer_ =
         std::make_unique<sherpa_onnx::cxx::OnlineRecognizer>(
             std::move(recognizer));
-    stream_ =
-        std::make_unique<sherpa_onnx::cxx::OnlineStream>(
-            std::move(stream));
     return true;
 }
 
+AsrEngine::StreamPtr AsrEngine::create_stream()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!recognizer_) {
+        return nullptr;
+    }
+
+    auto stream = recognizer_->CreateStream();
+    if (!stream.Get()) {
+        return nullptr;
+    }
+
+    return std::make_unique<sherpa_onnx::cxx::OnlineStream>(
+        std::move(stream));
+}
+
 bool AsrEngine::feed(
+    StreamPtr &stream,
     const int16_t *samples,
     std::size_t sample_count,
     std::string &text,
     bool &endpoint)
 {
-    if (!recognizer_ || !stream_ ||
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!recognizer_ || !stream ||
         (!samples && sample_count != 0)) {
         return false;
     }
@@ -67,54 +76,56 @@ bool AsrEngine::feed(
     }
 
     if (!input.empty()) {
-        stream_->AcceptWaveform(
+        stream->AcceptWaveform(
             kSampleRate,
             input.data(),
             static_cast<int32_t>(input.size()));
     }
 
-    while (recognizer_->IsReady(stream_.get())) {
-        recognizer_->Decode(stream_.get());
+    while (recognizer_->IsReady(stream.get())) {
+        recognizer_->Decode(stream.get());
     }
 
-    text = recognizer_->GetResult(stream_.get()).text;
-    endpoint = recognizer_->IsEndpoint(stream_.get());
+    text = recognizer_->GetResult(stream.get()).text;
+    endpoint = recognizer_->IsEndpoint(stream.get());
     return true;
 }
 
-bool AsrEngine::finish(std::string &text)
+bool AsrEngine::finish(StreamPtr &stream, std::string &text)
 {
-    if (!recognizer_ || !stream_) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (!recognizer_ || !stream) {
         return false;
     }
 
-    stream_->InputFinished();
-    while (recognizer_->IsReady(stream_.get())) {
-        recognizer_->Decode(stream_.get());
+    stream->InputFinished();
+    while (recognizer_->IsReady(stream.get())) {
+        recognizer_->Decode(stream.get());
     }
 
-    text = recognizer_->GetResult(stream_.get()).text;
+    text = recognizer_->GetResult(stream.get()).text;
     return true;
 }
 
-void AsrEngine::reset()
+void AsrEngine::reset(StreamPtr &stream)
 {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (!recognizer_) {
         return;
     }
 
-    stream_.reset();
-    auto stream = recognizer_->CreateStream();
-    if (stream.Get()) {
-        stream_ =
+    stream.reset();
+    auto next_stream = recognizer_->CreateStream();
+    if (next_stream.Get()) {
+        stream =
             std::make_unique<sherpa_onnx::cxx::OnlineStream>(
-                std::move(stream));
+                std::move(next_stream));
     }
 }
 
 void AsrEngine::shutdown()
 {
-    stream_.reset();
+    std::lock_guard<std::mutex> lock(mutex_);
     recognizer_.reset();
 }
 
