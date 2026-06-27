@@ -21,7 +21,7 @@ document.addEventListener("DOMContentLoaded", () => {
   bindForms();
   els.baseUrlInput.value = state.baseUrl;
   renderExamples();
-  appendMessage("assistant", "Ready.");
+  appendMessage("assistant", "Hello! How can I help you? Send a message in the chat to get started.");
   refreshStatus();
 });
 

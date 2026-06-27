@@ -85,7 +85,7 @@ export function useChat(baseUrl, models, refreshStatus) {
 }
 
 function readyMessage() {
-  return createMessage("assistant", "Ready.", { transient: true });
+  return createMessage("assistant", "Hello! How can I help you? Send a message in the chat to get started.", { transient: true });
 }
 
 function createMessage(role, content, extras = {}) {
