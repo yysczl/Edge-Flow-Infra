@@ -19,6 +19,9 @@ dist/
 # Runtime state, crash dumps, logs and generated media
 /core
 /core.*
+.env
+.env.*
+!.env.example
 runtime/
 *.log
 *.pid

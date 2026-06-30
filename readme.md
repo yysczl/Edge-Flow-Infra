@@ -17,7 +17,25 @@
   - 设计RPC服务注册，实现信道自动注册/释放，SQL处理；并解析 action 实现动态任务分发请求
   - 实现轻量化内存kv缓存数据库存储 unit 元信息；并提供线程安全SQL查询接口，供节点动态通信
   - 设计多协议网关，实现TCP/ZMQ协议转换，支持外部用户-内部业务节点通信交互
-  - 设计主从多Reactor TCP通信框架，实现压测10000+TCP并发连接
-5. Node业务层接口设计：ros节点
-  - TASK任务管理（类似线程）：实现单任务实例管理，模型加载/推理/流式输出回调机制等
-  - 服务层控制（类似进程）：自定义实现setup等接口，对业务节点进行生命周期管理，实现节点间相互订阅
+
+docker compose 配置使用方式：
+
+启动后台服务：
+```bash
+docker compose up -d
+```
+
+查看状态：
+```bash
+docker compose ps
+```
+
+查看日志：
+```bash
+docker compose logs -f cloudflared
+```
+
+停止：
+```bash
+docker compose down
+```
